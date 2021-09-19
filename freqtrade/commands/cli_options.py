@@ -139,6 +139,12 @@ AVAILABLE_CLI_OPTIONS = {
         '--timeframe-detail',
         help='Specify detail timeframe for backtesting (`1m`, `5m`, `30m`, `1h`, `1d`).',
     ),
+    "order_book_history": Arg(
+        '--order-book-history',
+        help='use historical order book data for execution price in backtest.',
+        action='store_true',
+        default=False
+    ),
     "position_stacking": Arg(
         '--eps', '--enable-position-stacking',
         help='Allow buying the same pair multiple times (position stacking).',

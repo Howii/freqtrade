@@ -245,6 +245,9 @@ class Configuration:
         self._args_to_config(config, argname='timeframe_detail',
                              logstring='Parameter --timeframe-detail detected, '
                              'using {} for intra-candle backtesting ...')
+        self._args_to_config(config, argname='order_book_history',
+                             logstring='Parameter --order-book-history detected, '
+                             'using historical order book data for execution price in backtesting ...')
         self._args_to_config(config, argname='stake_amount',
                              logstring='Parameter --stake-amount detected, '
                              'overriding stake_amount to: {} ...')

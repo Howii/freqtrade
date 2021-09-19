@@ -99,6 +99,36 @@ def load_data(datadir: Path,
     return result
 
 
+def load_order_book_data(datadir: Path,
+                         timeframe: str,
+                         pairs: List[str],
+                         ) -> Dict[str, Dict]:
+    """
+    Load order book history data for a list of pairs.
+    Indexed by timestamp for fast matching.
+    Currently only support JSON, so no need for data handler.
+
+    :param datadir: Path to the data storage location.
+    :param timeframe: Timeframe (e.g. "5m")
+    :param pairs: List of pairs to load
+    :return: dict(<pair>:<dict>)
+    """
+    import json
+    from pandas import to_datetime
+    from misc import pair_to_filename
+
+    result = {}
+    for pair in pairs:
+        pair_s = pair_to_filename(pair)
+        filename = datadir.joinpath(f"{pair_s}-{timeframe}-orderbook.json")
+        with open(filename, "r") as fp:
+            data = json.load(fp)
+        indexed_data = {to_datetime(x['timestamp'], unit='ms', utc=True): x for x in data}
+        result[pair] = indexed_data
+
+    return result
+
+
 def refresh_data(datadir: Path,
                  timeframe: str,
                  pairs: List[str],

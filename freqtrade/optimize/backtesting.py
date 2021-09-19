@@ -92,10 +92,14 @@ class Backtesting:
             if self.timeframe_min <= self.timeframe_detail_min:
                 raise OperationalException(
                     "Detail timeframe must be smaller than strategy timeframe.")
-
         else:
             self.timeframe_detail_min = 0
         self.detail_data: Dict[str, DataFrame] = {}
+
+        # Load historical order book if specified
+        # TODO: maybe order book should have its own finer timeframe
+        self.order_book_history = self.config.get('order_book_history', False)
+        self.order_book_data: Dict[str, Dict] = {}
 
         self.pairlists = PairListManager(self.exchange, self.config)
         if 'VolumePairList' in self.pairlists.name_list:
@@ -214,6 +218,19 @@ class Backtesting:
             )
         else:
             self.detail_data = {}
+
+    def load_order_book_data(self) -> None:
+        """
+        Loads historical order book data if necessary
+        """
+        if self.order_book_history:
+            self.order_book_data = history.load_order_book_data(
+                datadir=self.config['datadir'],
+                timeframe=self.timeframe,
+                pairs=self.pairlists.whitelist
+            )
+        else:
+            self.order_book_data = {}
 
     def prepare_backtest(self, enable_protections):
         """
@@ -343,7 +360,7 @@ class Backtesting:
                 # This should not be reached...
                 return sell_row[OPEN_IDX]
         else:
-            return sell_row[OPEN_IDX]
+            return self._get_rate(trade.pair, sell_row, 'bids')
 
     def _get_sell_trade_entry_for_candle(self, trade: LocalTrade,
                                          sell_row: Tuple) -> Optional[LocalTrade]:
@@ -429,12 +446,13 @@ class Backtesting:
         if stake_amount and (not min_stake_amount or stake_amount > min_stake_amount):
             # Enter trade
             has_buy_tag = len(row) >= BUY_TAG_IDX + 1
+            rate = self._get_rate(pair, row, 'asks')
             trade = LocalTrade(
                 pair=pair,
-                open_rate=row[OPEN_IDX],
+                open_rate=rate,
                 open_date=row[DATE_IDX].to_pydatetime(),
                 stake_amount=stake_amount,
-                amount=round(stake_amount / row[OPEN_IDX], 8),
+                amount=round(stake_amount / rate, 8),
                 fee_open=self.fee,
                 fee_close=self.fee,
                 is_open=True,
@@ -443,6 +461,13 @@ class Backtesting:
             )
             return trade
         return None
+
+    def _get_rate(self, pair: str, row: List, side: str) -> float:
+        if not self.order_book_history or row[DATE_IDX] not in self.order_book_data[pair]:
+            return row[OPEN_IDX]
+        else:
+            # TODO: handle large trade that exceeds volume of one or more limit orders
+            return self.order_book_data[pair][row[DATE_IDX]][side][0][0]
 
     def handle_left_open(self, open_trades: Dict[str, List[LocalTrade]],
                          data: Dict[str, List[Tuple]]) -> List[LocalTrade]:
@@ -457,7 +482,7 @@ class Backtesting:
 
                     trade.close_date = sell_row[DATE_IDX].to_pydatetime()
                     trade.sell_reason = SellType.FORCE_SELL.value
-                    trade.close(sell_row[OPEN_IDX], show_msg=False)
+                    trade.close(self._get_rate(trade.pair, sell_row, "bids"), show_msg=False)
                     LocalTrade.close_bt_trade(trade)
                     # Deepcopy object to have wallets update correctly
                     trade1 = deepcopy(trade)
@@ -647,6 +672,7 @@ class Backtesting:
 
         data, timerange = self.load_bt_data()
         self.load_bt_data_detail()
+        self.load_order_book_data()
         logger.info("Dataload complete. Calculating indicators")
 
         for strat in self.strategylist:
